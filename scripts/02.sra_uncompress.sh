@@ -8,5 +8,5 @@ mkdir -p ${OUT_DIR}
 
 for id in $SRR_IDS
 do
-   echo "fastq-dump --gzip --split-3 --defline-qual '+' --defline-seq '@\$ac-\$si/\$ri' $id -O ${OUT_DIR} &"
+   echo "fastq-dump --gzip --split-3 --defline-qual '+' --defline-seq '@\$ac-\$si/\$ri' $id -O ${OUT_DIR} &" | bash
 done

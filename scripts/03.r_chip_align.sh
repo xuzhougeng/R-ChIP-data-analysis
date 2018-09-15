@@ -27,6 +27,6 @@ do
     echo "bowtie2 --very-sensitive-local --mm -p $threads -x $index -U ${FQ_DIR}/$id.fastq.gz 2> ${LOG_DIR}/$id.bt2.log | \
     samtools sort -@ 2 -m 1G -T ${TMP_DIR}/${id} -o ${ALIGN_DIR}/${id}.sort.bam \
     && touch ${FQ_DIR}/$id.bt2.done 
-    " | qsub -V -cwd -pe openmpi $threads -N ${id}_bt2 -q wangjw -S /bin/bash -o /tmp -e /tmp
+    " | bash
     fi
 done
