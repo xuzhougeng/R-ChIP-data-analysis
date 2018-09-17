@@ -1,6 +1,6 @@
 #!/bin/bash
 
-sra_files=$1
+sra_files=${1?missing input files}
 
 sra_ids=$(egrep -o 'SRR[0-9]{5,9}' $sra_files)
 

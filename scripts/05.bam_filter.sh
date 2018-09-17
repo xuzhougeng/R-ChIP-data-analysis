@@ -16,12 +16,18 @@ mkdir -p ${ALIGN_DIR}
 mkdir -p ${LOG_DIR}
 mkdir -p ${TMP_DIR}
 
-samples=$1
+samples=${1?missing sample files}
 
 exec 0< $samples
-# alignment
+
+# filteration
 while read id;
 do
-    echo "samtools view -@ threads -bF 1804 -q 30 ${ALIGN_DIR}/${id}.mkdup.bam -o ${ALIGN_DIR}/${id}.flt.bam" | \
-    qsub -V -cwd -pe openmpi $threads -N ${id}_mkdup -q wangjw -S /bin/bash -o /tmp -e /tmp
+    if [ ! -f ${ALIGN_DIR}/${id}.flt.done ]
+    then
+    echo "
+    samtools view -@ threads -bF 1804 -q 30 ${ALIGN_DIR}/${id}.mkdup.bam -o ${ALIGN_DIR}/${id}.flt.bam\
+    && samtools index ${ALIGN_DIR}/${id}.flt.bam \
+    && touch ${ALIGN_DIR}/${id}.flt.done "| bash
+    fi
 done

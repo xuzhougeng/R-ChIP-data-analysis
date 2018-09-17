@@ -1,6 +1,6 @@
 #!/bin/bash
 
-file_in=$1
+file_in=${1?missing input files}
 
 SRR_IDS=$( egrep -o 'SRR[0-9]{5,9}' ${file_in})
 OUT_DIR="analysis/0-raw-data"

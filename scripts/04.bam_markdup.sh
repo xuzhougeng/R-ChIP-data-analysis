@@ -16,7 +16,7 @@ mkdir -p ${ALIGN_DIR}
 mkdir -p ${LOG_DIR}
 mkdir -p ${TMP_DIR}
 
-samples=$1
+samples=${1?missing sample files}
 
 exec 0< $samples
 # mark duplication
