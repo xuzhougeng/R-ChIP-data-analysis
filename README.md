@@ -31,6 +31,27 @@ R-loop的高通量分析方法目前都是依赖于S9.6抗体捕获RNA/DNA杂合
 
 > “和普通的RNAseq不同，链特异性测序可以保留最初产生RNA的方向”
 
+## 文章的分析内容
+
+后续的分析部分会尝试完成文章中出现的分析。
+
+1. 证明R-ChIP方法的效率和可靠度
+   - 找到D210N特异而WKKD非特异的基因
+   - peak的正负链比对情况
+1. 序列偏好性和基因组分布
+   - 比较narrow Peak和broad peak的peak大小（boxplot)
+   - broad peak是否包含narrow peak（韦恩图），且一方特异的peak的信号值也弱
+   - G/C skew， 统计距离summit的ATCG比例，统计背景和R-loop相比，G二聚体、G-三聚体、G四聚体..的出现比例
+   - G-rich 在非模板链出现次树显著增加
+   - peak在基因组上的分布(promoter proximal regions, +- Kb from TSS). 比较不同基因不同部分的差异
+1. 与S9.6的R-loop结果系统性比较(基于K562 cells)
+   - 比较DRIP-seq和R-ChIP的peak大小
+   - 看两者的peak的overlap
+   - 在JUN座位上的R-ChIP, DRIP-seq, DNase, H3K4me1, H3K4me2,H3K4me3, H3K27ac
+1. 人类基因组上其他R-loop热点分析
+1. R-loop诱导转录
+1. R-loop的形成需要游离RNA 末端(free RNA ends)
+
 ## 准备分析环境
 
 ### 软件部分
@@ -76,7 +97,7 @@ mkdir -p r-chip/{analysis/0-raw-data,index,scripts,results}
 ```bash
 #!/bin/bash
 
-sra_files=$1
+sra_files=${1?missing input file}
 
 sra_ids=$(egrep -o 'SRR[0-9]{5,9}' $sra_files)
 
@@ -97,7 +118,7 @@ done
 ```bash
 #!/bin/bash
 
-file_in=$1
+file_in=${1?missing input file}
 SRR_IDS=$( egrep -o 'SRR[0-9]{5,9}' ${file_in})
 OUT_DIR="analysis/0-raw-data"
 mkdir -p ${OUT_DIR}
@@ -120,6 +141,12 @@ done
 curl -s ftp://ftp.ccb.jhu.edu/pub/data/bowtie2_indexes/hg19.zip -o index/hg19.zip &
 cd index
 unzip hg19.zip
+```
+
+从索引提取每条染色体的长度
+
+```bash
+bowtie2-inspect -s index/hg19 | cut -f 2,3 | grep '^chr' > index/hg19.chrom.sizes
 ```
 
 ## 数据分析
@@ -184,7 +211,7 @@ mkdir -p ${ALIGN_DIR}
 mkdir -p ${LOG_DIR}
 mkdir -p ${TMP_DIR}
 
-samples=$1
+samples=${1?missing sample file}
 
 exec 0< $samples
 # alignment
@@ -226,7 +253,7 @@ mkdir -p ${ALIGN_DIR}
 mkdir -p ${LOG_DIR}
 mkdir -p ${TMP_DIR}
 
-samples=$1
+samples=${1?missing sample file}
 
 exec 0< $samples
 # mark duplication
@@ -261,11 +288,12 @@ mkdir -p ${ALIGN_DIR}
 mkdir -p ${LOG_DIR}
 mkdir -p ${TMP_DIR}
 
-samples=$1
+samples=${1?missing sample file}
 
 exec 0< $samples
 # filter
 while read id;
+do
     if [ ! -f ${ALIGN_DIR}/${id}.flt.done ]
     then
     echo "
@@ -290,38 +318,280 @@ HKE293-WKKD-Input
 HKE293-delta-HC-V5ChIP
 ```
 
-这样子就可以以此运行脚本了
+这样子就可以依次运行脚本了
 
 - 比对: `bash scripts/03.r_chip_align.sh samples01.txt`
 - 标记重复：`bash scripts/04.bam_markdup.sh samples01.txt`
 - 去除不符合要求的比对: `bash scripts/05.bam_filter.sh samples01.txt`
 
+处理完之后可以对每个样本都进行一次统计，包括如下信息：
 
+- 处理前的原始reads数
+- 处理后对唯一比对reads数
+- 唯一比对reads数所占原始reads数的比例
 
-## 下游分析任务
+这个工作同样可以用shell脚本完成, 脚本为`06.sample_align_stat.sh`
 
-1. 证明R-ChIP方法的效率和可靠度
+```bash
+#!/bin/bash
 
-   - 找到D210N特异而WKKD非特异的基因
+set -e
+set -u
+set -o pipefail
 
-   - peak的正负链比对情况
+samples=${1?missing sample file}
+threads=8
+ALIGN_DIR="analysis/2-read-align"
 
-1. 序列偏好性和基因组分布
+echo -e "Experiment \t Raw Reads \t Uniquely mapped Reads \t ratio"
+exec 0< $samples
 
-   - 比较narrow Peak和broad peak的peak大小（boxplot)
-   - broad peak是否包含narrow peak（韦恩图），且一方特异的peak的信号值也弱
-   - G/C skew， 统计距离summit的ATCG比例，统计背景和R-loop相比，G二聚体、G-三聚体、G四聚体..的出现比例
-   - G-rich 在非模板链出现次树显著增加
-   - peak在基因组上的分布(promoter proximal regions, +- Kb from TSS). 比较不同基因不同部分的差异
+while read sample;
+do
+     total=$( samtools view -@ ${threads} -c ${ALIGN_DIR}/${sample}.sort.bam )
+     unique=$( samtools view -@ ${threads} -c ${ALIGN_DIR}/${sample}.flt.bam )
+     ratio=$( echo "scale=2; 100 * $unique / $total " | bc )
+     echo -e "$sample \t $total \t $unique \t $ratio %"
+done
+```
 
-1. 与S9.6的R-loop结果系统性比较(基于K562 cells)
+运行方法是`bash scripts/06.sample_align_stat.sh samples01.txt > results/library_stat.txt`，运行结果如下，和原本的Table S2对比，你会发现结果基本一致，有出入的地方我推测是标记重复这一步所用软件不同。
 
-   - 比较DRIP-seq和R-ChIP的peak大小
-   - 看两者的peak的overlap
-   - 在JUN座位上的R-ChIP, DRIP-seq, DNase, H3K4me1, H3K4me2,H3K4me3, H3K27ac
+| Experiment               | Raw   Reads | Uniquely mapped Reads | ratio  |
+| ------------------------ | ----------- | --------------------- | ------ |
+| HKE293-D210N-V5ChIP-Rep1 | 22405416    | 6443979               | 28.76% |
+| HKE293-D210N-Input-Rep1  | 60302237    | 25673307              | 42.57% |
+| HKE293-D210N-V5ChIP-Rep2 | 17763614    | 11778533              | 66.30% |
+| HKE293-D210N-Input-Rep2  | 11131443    | 8553097               | 76.83% |
+| HKE293-D210N-V5ChIP-Rep3 | 8799855     | 5640375               | 64.09% |
+| HKE293-D210N-Input-Rep3  | 4529910     | 3209275               | 70.84% |
+| HKE293-WKKD-V5ChIP       | 12734577    | 8612940               | 67.63% |
+| HKE293-WKKD-Input        | 8830478     | 6643507               | 75.23% |
+| HKE293-delta-HC-V5ChIP   | 25174573    | 9252009               | 36.75% |
 
-1. 人类基因组上其他R-loop热点分析
+#### BAM相似度评估
 
-1. R-loop诱导转录
+上一步得到各个样本的BAM文件之后，就可以在全基因组范围上看看这几个样本之间是否有差异。也就是先将基因组分成N个区间，然后用统计每个区间上比对上的read数。
 
-1. R-loop的形成需要游离RNA 末端(free RNA ends)
+脚本`scripts/07.genome_bin_read_coverage.sh`如下
+
+```bash
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+samples=${1?missing sample file}
+chromsize=${2:-index/hg19.chrom.sizes}
+size=${3:-3000}
+ALIGN_DIR="analysis/2-read-align"
+COV_DIR="analysis/3-genome-coverage"
+
+mkdir -p ${COV_DIR}
+
+exec 0< $samples
+
+while read sample
+do
+    bedtools makewindows -g $chromsize -w $size | \
+      bedtools intersect -b ${ALIGN_DIR}/${sample}.flt.bam -a - -c -bed > ${COV_DIR}/${sample}.ReadsCoverage
+done
+
+```
+
+准备一个输入文件存放待处理样本的前缀，然后运行脚本`bash scripts/07.genome_bin_read_coverage.sh samples_rep.txt`
+
+```bash
+HKE293-D210N-Input-Rep1
+HKE293-D210N-Input-Rep2
+HKE293-D210N-Input-Rep3
+HKE293-D210N-V5ChIP-Rep1
+HKE293-D210N-V5ChIP-Rep2
+HKE293-D210N-V5ChIP-Rep3
+```
+
+最后将得到的文件导入到R语言中进行作图，使用的是基础绘图系统的光滑散点图(smoothScatter)。
+
+```r
+files_list <- list.files("r-chip/analysis/3-genome-coverage","ReadsCoverage")
+files_path <- file.path("r-chip/analysis/3-genome-coverage",files_list)
+
+input_rep1 <- read.table(files_path[1], sep='\t')
+input_rep2 <- read.table(files_path[2], sep='\t')
+input_rep3 <- read.table(files_path[3], sep='\t')
+chip_rep1 <- read.table(files_path[4], sep='\t')
+chip_rep2 <- read.table(files_path[5], sep='\t')
+chip_rep3 <- read.table(files_path[6], sep='\t')
+
+pw_plot <- function(x, y, 
+                    xlab="x",
+                    ylab="y", ...){
+  log2x <- log2(x)
+  log2y <- log2(y)
+  smoothScatter(log2x,log2y,
+                cex=1.2,
+                xlim=c(0,12),ylim=c(0,12),
+                xlab=xlab,
+                ylab=ylab)
+  text(3,10,paste("R = ",round(cor(x,y),2),sep=""))
+}
+
+par(mfrow=c(2,3))
+pw_plot(chip_rep1[,4], chip_rep2[,4],
+        xlab = "Rep 1 (Log2 Tag Counts)",
+        ylab = "Rep 2 (Log2 Tag Counts)")
+
+pw_plot(chip_rep1[,4], chip_rep3[,4],
+        xlab = "Rep 1 (Log2 Tag Counts)",
+        ylab = "Rep 2 (Log2 Tag Counts)")
+
+pw_plot(chip_rep2[,4], chip_rep3[,4],
+        xlab = "Rep 1 (Log2 Tag Counts)",
+        ylab = "Rep 2 (Log2 Tag Counts)")
+
+pw_plot(input_rep1[,4], input_rep2[,4],
+        xlab = "Rep 1 (Log2 Tag Counts)",
+        ylab = "Rep 2 (Log2 Tag Counts)")
+
+pw_plot(input_rep1[,4], input_rep3[,4],
+        xlab = "Rep 1 (Log2 Tag Counts)",
+        ylab = "Rep 3 (Log2 Tag Counts)")
+
+pw_plot(input_rep2[,4], input_rep3[,4],
+        xlab = "Rep 2 (Log2 Tag Counts)",
+        ylab = "Rep 3 (Log2 Tag Counts)")
+```
+
+![correlationship](http://oex750gzt.bkt.clouddn.com/18-9-17/30639991.jpg)
+
+> 这种多个BAM文件之间相关性衡量，其实也可以用`deepTools`的`plotCorrelation`画出来，但是我觉得应该没有R语言画 的好看。
+
+由于同一个样本间的BAM文件具有很强的相关性，因此可以将这些样本合并起来转换成bigwig格式，这样子在基因组浏览器（例如IGV, UCSC Browser, JBrowse）上方便展示。
+
+如下的代码的目的就是先合并BAM，然后转换成BigWig，拆分成正链和反链进行保存
+
+```bash
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+samples=${1?please provied sample file}
+threads=${2-8}
+bs=${3-50}
+
+ALIGN_DIR="analysis/2-read-align"
+BW_DIR="analysis/4-normliazed-bw"
+
+mkdir -p $BW_DIR
+
+exec 0< $samples
+cd $ALIGN_DIR
+
+while read sample
+do
+    bams=$(ls ${sample}*flt.bam | tr '\n' ' ')
+    if [ ! -f ../$(basename ${BW_DIR})/${sample}.tmp.bam ]; then
+    echo "samtools merge -f -@ ${threads} ../$(basename ${BW_DIR})/${sample}.tmp.bam $bams  &&
+          samtools index ../$(basename ${BW_DIR})/${sample}.tmp.bam" | bash
+    fi
+done
+
+cd ../../
+exec 0< $samples
+
+cd ${BW_DIR}
+while read sample
+do
+    bamCoverage -b ${sample}.tmp.bam -o ${sample}_fwd.bw -of bigwig  \
+      --filterRNAstrand forward --binSize ${bs} --normalizeUsing CPM --effectiveGenomeSize 2864785220 \
+      --extendReads 150 -p ${threads} 2> ../log/${sample}_fwd.log
+    bamCoverage -b ${sample}.tmp.bam -o ${sample}_rvs.bw -of bigwig  \
+      --filterRNAstrand reverse --binSize ${bs} --normalizeUsing CPM --effectiveGenomeSize 2864785220 \
+      --extendReads 150 -p ${threads} 2> ../log/${sample}_rvs.log
+    rm -f ${sample}.tmp.bam ${sample}.tmp.bam.bai
+done
+
+```
+
+得到的BW文件你可以在IGV上初步看看，比如说检查下文章Figure 1(E)提到的CIRH1A基因
+
+![CIRH1A](http://oex750gzt.bkt.clouddn.com/18-9-18/90750745.jpg)
+
+发表文章时肯定不能用上图，我们可以用R的`Gviz`进行展示下
+
+```r
+library(Gviz)
+
+#下面将scale等track写入tracklist
+tracklist<-list()
+itrack <- IdeogramTrack(genome = "hg19", chromosome = 'chr16',outline=T)
+tracklist[["itrack"]]<-itrack
+
+# 读取BigWig
+bw_file_path <- "C:/Users/DELL/Desktop/FigureYa/R-ChIP/"
+bw_file_names <- list.files(bw_file_path, "*.bw")
+bw_files <- file.path("C:/Users/DELL/Desktop/FigureYa/R-ChIP/",
+                      bw_file_names)
+
+tracklist[['D210-fwd']] <- DataTrack(range = bw_files[3],
+                              genome="hg19",
+                              type="histogram",
+                              name='D210 + ',
+                              ylim=c(0,4),
+                              col.histogram="#2167a4",
+                              fill.histogram="#2167a4")
+tracklist[['D210-rvs']] <- DataTrack(range = bw_files[4],
+                                     genome="hg19",
+                                     type="histogram",
+                                     name='D210 - ',
+                                     ylim=c(4,0),
+                                     col.histogram="#eb1700",
+                                     fill.histogram="#eb1700")
+
+tracklist[['WKDD-fwd']] <- DataTrack(range = bw_files[9],
+                                     genome="hg19",
+                                     type="histogram",
+                                     name='WKDD + ',
+                                     ylim=c(0,4),
+                                     ylab=2,
+                                     col.histogram="#2167a4",
+                                     fill.histogram="#2167a4")
+tracklist[['WKDD-rvs']] <- DataTrack(range = bw_files[10],
+                                     genome="hg19",
+                                     type="histogram",
+                                     name=' WKDD -',
+                                     ylim=c(4,0),
+                                     col.histogram="#eb1700",
+                                     fill.histogram="#eb1700",
+                                     showAxis=TRUE)
+
+#写入比例尺
+scalebar <- GenomeAxisTrack(scale=0.25,
+                            col="black",
+                            fontcolor="black",
+                            name="Scale",
+                            labelPos="above",showTitle=F)
+tracklist[["scalebar"]]<-scalebar
+
+# 画图
+plotTracks(trackList = tracklist,
+           chromosome = "chr16",
+           from =  69141913, to= 69205033,
+           background.panel = "#f6f6f6",
+           background.title = "white",
+           col.title="black",col.axis="black",
+           rot.title=0,cex.title=0.5,margin=10,title.width=1.75,
+           cex.axis=1
+           )
+```
+
+![Gviz](http://oex750gzt.bkt.clouddn.com/18-9-18/62177187.jpg)
+
+后续用AI修改下坐标轴，就几乎和原图差不多了。此外可能还要调整之前脚本的bin size， 使得整体更加平滑
+
+#### Peak Calling
+
+关于MACS2的使用方法， 我写了[如何使用MACS进行peak calling](https://www.jianshu.com/p/6a975f0ea65a)详细地介绍了它的参数。
