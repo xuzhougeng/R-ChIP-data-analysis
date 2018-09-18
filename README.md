@@ -467,19 +467,131 @@ pw_plot(input_rep2[,4], input_rep3[,4],
 
 > 这种多个BAM文件之间相关性衡量，其实也可以用`deepTools`的`plotCorrelation`画出来，但是我觉得应该没有R语言画 的好看。
 
-由于同一个样本间的BAM文件具有很强的相关性，因此可以将这些样本合并起来，这样子在Track
+由于同一个样本间的BAM文件具有很强的相关性，因此可以将这些样本合并起来转换成bigwig格式，这样子在基因组浏览器（例如IGV, UCSC Browser, JBrowse）上方便展示。
+
+如下的代码的目的就是先合并BAM，然后转换成BigWig，拆分成正链和反链进行保存
+
+```bash
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+samples=${1?please provied sample file}
+threads=${2-8}
+bs=${3-50}
+
+ALIGN_DIR="analysis/2-read-align"
+BW_DIR="analysis/4-normliazed-bw"
+
+mkdir -p $BW_DIR
+
+exec 0< $samples
+cd $ALIGN_DIR
+
+while read sample
+do
+    bams=$(ls ${sample}*flt.bam | tr '\n' ' ')
+    if [ ! -f ../$(basename ${BW_DIR})/${sample}.tmp.bam ]; then
+    echo "samtools merge -f -@ ${threads} ../$(basename ${BW_DIR})/${sample}.tmp.bam $bams  &&
+          samtools index ../$(basename ${BW_DIR})/${sample}.tmp.bam" | bash
+    fi
+done
+
+cd ../../
+exec 0< $samples
+
+cd ${BW_DIR}
+while read sample
+do
+    bamCoverage -b ${sample}.tmp.bam -o ${sample}_fwd.bw -of bigwig  \
+      --filterRNAstrand forward --binSize ${bs} --normalizeUsing CPM --effectiveGenomeSize 2864785220 \
+      --extendReads 150 -p ${threads} 2> ../log/${sample}_fwd.log
+    bamCoverage -b ${sample}.tmp.bam -o ${sample}_rvs.bw -of bigwig  \
+      --filterRNAstrand reverse --binSize ${bs} --normalizeUsing CPM --effectiveGenomeSize 2864785220 \
+      --extendReads 150 -p ${threads} 2> ../log/${sample}_rvs.log
+    rm -f ${sample}.tmp.bam ${sample}.tmp.bam.bai
+done
+
+```
+
+得到的BW文件你可以在IGV上初步看看，比如说检查下文章Figure 1(E)提到的CIRH1A基因
+
+![CIRH1A](http://oex750gzt.bkt.clouddn.com/18-9-18/90750745.jpg)
+
+发表文章时肯定不能用上图，我们可以用R的`Gviz`进行展示下
+
+```r
+library(Gviz)
+
+#下面将scale等track写入tracklist
+tracklist<-list()
+itrack <- IdeogramTrack(genome = "hg19", chromosome = 'chr16',outline=T)
+tracklist[["itrack"]]<-itrack
+
+# 读取BigWig
+bw_file_path <- "C:/Users/DELL/Desktop/FigureYa/R-ChIP/"
+bw_file_names <- list.files(bw_file_path, "*.bw")
+bw_files <- file.path("C:/Users/DELL/Desktop/FigureYa/R-ChIP/",
+                      bw_file_names)
+
+tracklist[['D210-fwd']] <- DataTrack(range = bw_files[3],
+                              genome="hg19",
+                              type="histogram",
+                              name='D210 + ',
+                              ylim=c(0,4),
+                              col.histogram="#2167a4",
+                              fill.histogram="#2167a4")
+tracklist[['D210-rvs']] <- DataTrack(range = bw_files[4],
+                                     genome="hg19",
+                                     type="histogram",
+                                     name='D210 - ',
+                                     ylim=c(4,0),
+                                     col.histogram="#eb1700",
+                                     fill.histogram="#eb1700")
+
+tracklist[['WKDD-fwd']] <- DataTrack(range = bw_files[9],
+                                     genome="hg19",
+                                     type="histogram",
+                                     name='WKDD + ',
+                                     ylim=c(0,4),
+                                     ylab=2,
+                                     col.histogram="#2167a4",
+                                     fill.histogram="#2167a4")
+tracklist[['WKDD-rvs']] <- DataTrack(range = bw_files[10],
+                                     genome="hg19",
+                                     type="histogram",
+                                     name=' WKDD -',
+                                     ylim=c(4,0),
+                                     col.histogram="#eb1700",
+                                     fill.histogram="#eb1700",
+                                     showAxis=TRUE)
+
+#写入比例尺
+scalebar <- GenomeAxisTrack(scale=0.25,
+                            col="black",
+                            fontcolor="black",
+                            name="Scale",
+                            labelPos="above",showTitle=F)
+tracklist[["scalebar"]]<-scalebar
+
+# 画图
+plotTracks(trackList = tracklist,
+           chromosome = "chr16",
+           from =  69141913, to= 69205033,
+           background.panel = "#f6f6f6",
+           background.title = "white",
+           col.title="black",col.axis="black",
+           rot.title=0,cex.title=0.5,margin=10,title.width=1.75,
+           cex.axis=1
+           )
+```
+
+![](http://oex750gzt.bkt.clouddn.com/18-9-18/62177187.jpg)
+
+后续用AI修改下坐标轴，就几乎和原图差不多了。此外可能还要调整之前脚本的bin size， 使得整体更加平滑
 
 #### Peak Calling
 
 关于MACS2的使用方法， 我写了[如何使用MACS进行peak calling](https://www.jianshu.com/p/6a975f0ea65a)详细地介绍了它的参数。
-
-
-
-#### 重复间相似度评估
-
-如果一个样本有多个重复试验，有多种方法可以评估重复间的相似度
-
-- BAM重复间进行比较
-- Peak重复间进行比较
-
-关于BAM
