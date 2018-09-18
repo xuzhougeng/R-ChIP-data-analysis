@@ -588,7 +588,7 @@ plotTracks(trackList = tracklist,
            )
 ```
 
-![](http://oex750gzt.bkt.clouddn.com/18-9-18/62177187.jpg)
+![Gviz](http://oex750gzt.bkt.clouddn.com/18-9-18/62177187.jpg)
 
 后续用AI修改下坐标轴，就几乎和原图差不多了。此外可能还要调整之前脚本的bin size， 使得整体更加平滑
 
