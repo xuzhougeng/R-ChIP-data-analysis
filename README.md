@@ -720,71 +720,77 @@ grid.draw(venn.plot)
 
 ![venn plot](http://oex750gzt.bkt.clouddn.com/18-9-20/29733091.jpg)
 
-我们可以对这三类peak对应区间内的信号进行一下比较。统计信号强度的工具是bigwigSummary，来自于ucscGenomeBrowser工具集。
+我们可以对这三类peak对应区间内的信号进行一下比较。统计信号强度的工具是`bigwigSummary`，来自于[ucscGenomeBrowser](https://github.com/ucscGenomeBrowser/kent)工具集。
 
-脚本为scripts/10.peak_signal_summary.sh
+脚本为`scripts/10.peak_signal_summary.sh`
 
-    #!/bin/bash
-    
-    bed=${1?bed file}
-    fwd=${2?forwad bigwig}
-    rvs=${3?reverse bigwig}
-    
-    exec 0< $bed
-    
-    while read region
-    do
-        chr=$( echo $region | cut -d ' ' -f 1)
-        sta=$( echo $region | cut -d ' ' -f 2)
-        end=$( echo $region | cut -d ' ' -f 3)
-        (bigWigSummary $fwd $chr $sta $end 1 ; bigWigSummary $rvs $chr $sta $end 1 )| awk -v out=0 '{out=out+$1} END{print out/2}'
-    done
+```bash
+#!/bin/bash
+
+bed=${1?bed file}
+fwd=${2?forwad bigwig}
+rvs=${3?reverse bigwig}
+
+exec 0< $bed
+
+while read region
+do
+    chr=$( echo $region | cut -d ' ' -f 1)
+    sta=$( echo $region | cut -d ' ' -f 2)
+    end=$( echo $region | cut -d ' ' -f 3)
+    (bigWigSummary $fwd $chr $sta $end 1 ; bigWigSummary $rvs $chr $sta $end 1 )| awk -v out=0 '{out=out+$1} END{print out/2}'
+done
+```
 
 分别统计三类peak的信号的信号
 
-    bash scripts/10.peak_signal_summary.sh analysis/5-peak-calling/peak_compare/HKE293-D210_flt.broadPeak.only.bed analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_fwd.bw analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_rvs.bw > results/HKE293-D210N-V5ChIP.broadSignal
-    bash scripts/10.peak_signal_summary.sh analysis/5-peak-calling/peak_compare/HKE293-D210_flt.narrowPeak.only.bed analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_fwd.bw analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_rvs.bw > results/HKE293-D210N-V5ChIP.narrowSignal
-    bash scripts/10.peak_signal_summary.sh analysis/5-peak-calling/peak_compare/HKE293-D210_flt.common.peak analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_fwd.bw analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_rvs.bw > results/HKE293-D210N-V5ChIP.commonSignal
+```bash
+bash scripts/10.peak_signal_summary.sh analysis/5-peak-calling/peak_compare/HKE293-D210_flt.broadPeak.only.bed analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_fwd.bw analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_rvs.bw > results/HKE293-D210N-V5ChIP.broadSignal
+bash scripts/10.peak_signal_summary.sh analysis/5-peak-calling/peak_compare/HKE293-D210_flt.narrowPeak.only.bed analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_fwd.bw analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_rvs.bw > results/HKE293-D210N-V5ChIP.narrowSignal
+bash scripts/10.peak_signal_summary.sh analysis/5-peak-calling/peak_compare/HKE293-D210_flt.common.peak analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_fwd.bw analysis/4-normliazed-bw/HKE293-D210N-V5ChIP_rvs.bw > results/HKE293-D210N-V5ChIP.commonSignal
+```
 
 在R语言中绘图展示
 
-    # peak signal
-    commonSignal <- fread("./HKE293-D210N-V5ChIP.commonSignal")
-    narrowSignal <- fread("./HKE293-D210N-V5ChIP.narrowSignal")
-    broadSignal <-  fread("./HKE293-D210N-V5ChIP.broadSignal")
-    
-    data <- data.frame(signal=c(commonSignal$V1, narrowSignal$V1, broadSignal$V1),
-                       type=factor(rep(c("common","narrow","broad"),
-                                times=c(nrow(commonSignal),nrow(narrowSignal), nrow(broadSignal)))) )
-    
-    wilcox.test(data[data$type=="common",1],data[data$type=="broad",1])
-    wilcox.test(data[data$type=="common",1],data[data$type=="narrow",1])
-    
-    
-    p <- ggplot(data,aes(x=type,y=signal,col=type)) + 
-      geom_boxplot(outlier.colour = "NA") +
-      coord_cartesian(ylim=c(0,3.5)) +
-      theme(panel.grid.major = element_line(colour="NA"),
-            panel.grid.minor = element_line(colour="NA"),
-            panel.background = element_rect(fill="NA"),
-            panel.border = element_rect(colour="black", fill=NA)) +
-      theme(axis.text.x = element_blank()) +
-      xlab("") + ylab("R-loop Signal") + labs(col="") 
-    
-    
-    p1 <- p + annotate("segment", x=1,xend=1,y=0.75,yend=2,size=0.5) + 
-      annotate("segment", x=2,xend=2,y=1.25,yend=2,size=0.5) +
-      annotate("segment", x=1,xend=2,y=2,yend=2,size=0.5) +
-      annotate("text", x= 1.5, y=2.1, label="***") 
-    
-    p2 <- p1 + annotate("segment", x=3,xend=3,y=0.65,yend=3,size=0.5) + 
-      annotate("segment", x=2,xend=2,y=2.2,yend=3,size=0.5) +
-      annotate("segment", x=2,xend=3,y=3,yend=3,size=0.5) +
-      annotate("text", x= 2.5, y=3.2, label="***") 
-    
-    p2
+```bash
+# peak signal
+commonSignal <- fread("./HKE293-D210N-V5ChIP.commonSignal")
+narrowSignal <- fread("./HKE293-D210N-V5ChIP.narrowSignal")
+broadSignal <-  fread("./HKE293-D210N-V5ChIP.broadSignal")
+
+data <- data.frame(signal=c(commonSignal$V1, narrowSignal$V1, broadSignal$V1),
+                   type=factor(rep(c("common","narrow","broad"),
+                            times=c(nrow(commonSignal),nrow(narrowSignal), nrow(broadSignal)))) )
+
+wilcox.test(data[data$type=="common",1],data[data$type=="broad",1])
+wilcox.test(data[data$type=="common",1],data[data$type=="narrow",1])
 
 
+p <- ggplot(data,aes(x=type,y=signal,col=type)) + 
+  geom_boxplot(outlier.colour = "NA") +
+  coord_cartesian(ylim=c(0,3.5)) +
+  theme(panel.grid.major = element_line(colour="NA"),
+        panel.grid.minor = element_line(colour="NA"),
+        panel.background = element_rect(fill="NA"),
+        panel.border = element_rect(colour="black", fill=NA)) +
+  theme(axis.text.x = element_blank()) +
+  xlab("") + ylab("R-loop Signal") + labs(col="") 
 
-看图说话： 无论是narrow peak 特异区间的信号，还是broad peak 特异区间的信号都显著性低于其共有区间的信号。
+
+p1 <- p + annotate("segment", x=1,xend=1,y=0.75,yend=2,size=0.5) + 
+  annotate("segment", x=2,xend=2,y=1.25,yend=2,size=0.5) +
+  annotate("segment", x=1,xend=2,y=2,yend=2,size=0.5) +
+  annotate("text", x= 1.5, y=2.1, label="***") 
+
+p2 <- p1 + annotate("segment", x=3,xend=3,y=0.65,yend=3,size=0.5) + 
+  annotate("segment", x=2,xend=2,y=2.2,yend=3,size=0.5) +
+  annotate("segment", x=2,xend=3,y=3,yend=3,size=0.5) +
+  annotate("text", x= 2.5, y=3.2, label="***") 
+
+p2
+```
+
+![signal comparison](http://oex750gzt.bkt.clouddn.com/18-9-20/36368977.jpg)
+
+**看图说话**： 无论是narrow peak 特异区间的信号，还是broad peak 特异区间的信号都显著性低于其共有区间的信号。
 
