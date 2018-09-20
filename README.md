@@ -1,6 +1,4 @@
-# 如何进行R-ChIP数据分析
-
-提高自己分析能力的一个好的方法就是重复别人文章里的分析策略，所以这里会尝试对第一篇介绍R-ChIP技术文章"R-ChIP Using Inactive RNase H Reveals Dynamic Coupling of R-loops with Transcriptional Pausing at Gene Promoters"里的所有分析进行重复。
+提高自己分析能力的一个好的方法就是重复别人文章里的分析策略，所以这里会尝试对第一篇介绍R-ChIP技术文章"R-ChIP Using Inactive RNase H Reveals Dynamic Coupling of R-loops with Transcriptional Pausing at Gene Promoters"里的所有分析进行重复，我重复所用代码会更新在我的GitHub上，地址为<https://github.com/xuzhougeng/R-ChIP-data-analysis>
 
 选择这篇文章进行重复的理由有三点:
 
@@ -243,11 +241,11 @@ set -o pipefail
 threads=8
 index=index/hg19
 FQ_DIR="analysis/0-raw-data"
-ALIGN_DIR="analysis/2-read-align"
+OUT_DIR="analysis/2-read-align"
 LOG_DIR="analysis/log"
 TMP_DIR="analysis/tmp"
 
-mkdir -p ${ALIGN_DIR}
+mkdir -p ${OUT_DIR}
 mkdir -p ${LOG_DIR}
 mkdir -p ${TMP_DIR}
 
@@ -257,10 +255,10 @@ exec 0< $samples
 # mark duplication
 while read id;
 do
-    if [ ! -f ${ALIGN_DIR}/${id}.mkdup.done ]
+    if [ ! -f ${OUT_DIR}/${id}.mkdup.done ]
     then
-    echo "sambamba markdup -t $threads ${ALIGN_DIR}/${id}.sort.bam ${ALIGN_DIR}/${id}.mkdup.bam \
-    && touch ${ALIGN_DIR}/${id}.mkdup.done" | bash
+    echo "sambamba markdup -t $threads ${OUT_DIR}/${id}.sort.bam ${OUT_DIR}/${id}.mkdup.bam \
+    && touch ${OUT_DIR}/${id}.mkdup.done" | bash
     fi
 done
 ```
@@ -339,7 +337,7 @@ set -o pipefail
 
 samples=${1?missing sample file}
 threads=8
-ALIGN_DIR="analysis/2-read-align"
+OUT_DIR="analysis/2-read-align"
 
 echo -e "Experiment \t Raw Reads \t Uniquely mapped Reads \t ratio"
 exec 0< $samples
@@ -367,7 +365,7 @@ done
 | HKE293-WKKD-Input        | 8830478     | 6643507               | 75.23% |
 | HKE293-delta-HC-V5ChIP   | 25174573    | 9252009               | 36.75% |
 
-#### BAM相似度评估
+#### BAM相关性评估
 
 上一步得到各个样本的BAM文件之后，就可以在全基因组范围上看看这几个样本之间是否有差异。也就是先将基因组分成N个区间，然后用统计每个区间上比对上的read数。
 
@@ -461,11 +459,17 @@ pw_plot(input_rep2[,4], input_rep3[,4],
         ylab = "Rep 3 (Log2 Tag Counts)")
 ```
 
+下图上为D210的R-ChIP三个重复间的相关性，下为Input三个重复间的相关性
+
 ![correlationship](http://oex750gzt.bkt.clouddn.com/18-9-17/30639991.jpg)
 
 > 这种多个BAM文件之间相关性衡量，其实也可以用`deepTools`的`plotCorrelation`画出来，但是我觉得应该没有R语言画 的好看。
 
-由于同一个样本间的BAM文件具有很强的相关性，因此可以将这些样本合并起来转换成bigwig格式，这样子在基因组浏览器（例如IGV, UCSC Browser, JBrowse）上方便展示。
+**看图说话**： 由于同一个样本间的BAM文件具有很强的相关性，因此可以将这些样本合并起来，这样子在基因组浏览器上就可以只用一个轨（tracks）
+
+#### BigWig可视化
+
+虽然可以直接用BAM也行对比对结果进行可视化展示，但是一般BAM文件文件太大，不方便传输，所以需要转换成bigwig格式，这样子在基因组浏览器（例如IGV, UCSC Browser, JBrowse）上方便展示。
 
 如下的代码的目的就是先合并BAM，然后转换成BigWig，拆分成正链和反链进行保存
 
@@ -586,10 +590,130 @@ plotTracks(trackList = tracklist,
            )
 ```
 
-![Gviz](http://oex750gzt.bkt.clouddn.com/18-9-18/62177187.jpg)
+![原文Fig1E](http://oex750gzt.bkt.clouddn.com/18-9-18/62177187.jpg)
 
-后续用AI修改下坐标轴，就几乎和原图差不多了。此外可能还要调整之前脚本的bin size， 使得整体更加平滑
+后续用AI修改下坐标轴，就几乎和原图差不多了。此外可能还要调整之前脚本的bin size， 使得整体更加平滑。
+
+**看图说话**： 由于WKKD在D210N的基础上继续突变了几个位点，使得原本只丧失了RNASEH1的催化活性的D210N进一步丧失了结合到RNA/DNA杂合体的能力，在实验中就可以作为 **负对照**。上图就是其中一个有代表性的区间。
 
 #### Peak Calling
 
-关于MACS2的使用方法， 我写了[如何使用MACS进行peak calling](https://www.jianshu.com/p/6a975f0ea65a)详细地介绍了它的参数。
+关于MACS2的使用方法， 我写了[如何使用MACS进行peak calling](https://www.jianshu.com/p/6a975f0ea65a)详细地介绍了它的参数。按照默认参数分别找narrow peak 和 broad peak
+
+```bash
+cd analysis
+# HKE293 D210N
+macs2 callpeak -g hs --keep-dup all -f BAM -t 2-read-align/HKE293-D210N-V5ChIP-Rep*.flt.bam -c 2-read-align/HKE293-D210N-Input-Rep*.flt.bam --outdir 5-peak-calling/narrow -n HKE293-D210 2> log/HKE293-D210.macs2.narrow.log &
+macs2 callpeak -g hs --keep-dup all --broad -f BAM -t 2-read-align/HKE293-D210N-V5ChIP-Rep*.flt.bam -c 2-read-align/HKE293-D210N-Input-Rep*.flt.bam --outdir 5-peak-calling/broad -n HKE293-D210 2> log/HKE293-D210.macs2.broad.log &
+# HEK293 WKKD
+macs2 callpeak -g hs --keep-dup all -f BAM -t 2-read-align/HKE293-WKKD-V5ChIP.flt.bam -c 2-read-align/HKE293-WKKD-Input.flt.bam --outdir 5-peak-calling/narrow/ -n HKE293-WKKD 2> log/HKE293-WKKD.macs2.narrow.log &
+macs2 callpeak -g hs --keep-dup all --broad -f BAM -t 2-read-align/HKE293-WKKD-V5ChIP.flt.bam -c 2-read-align/HKE293-WKKD-Input.flt.bam --outdir 5-peak-calling/broad/ -n HKE293-WKKD 2> log/HKE293-WKKD.macs2.broad.log &
+```
+
+文章中对找到peak进行了一次筛选，标准是大于5倍富集和q-value 小于或等于0.001（broad peak则是0.0001），最后文章写着在D210N有12,906peak，然后剔除WKKD里的peak，还有12,507个。
+
+我找到的HKE293-D210的原始narrowPeak数为15,026, 按照作者的标准筛选后只剩下6639，发现负对照的WKKD只有2个peak，从D210过滤后基础上又剔除了一个。对于HKE2930-D210的原始broadPeak数为39278，过滤之后只剩2358了。
+
+这似乎表明在我的分析流程下，原标准有点过于严格了，因此我这里使用3倍。
+
+```bash
+cd analysis/5-peak-calling/
+fc=3
+# narrow peak
+awk -v fc=$fc '$7 >= fc && $9 >=3' narrow/HKE293-D210_peaks.narrowPeak > narrow/HKE293-D210_peaks.narrowPeak.tmp
+bedtools subtract -A -a narrow/HKE293-D210_peaks.narrowPeak.tmp -b narrow/HKE293-WKKD_peaks.narrowPeak > narrow/HKE293-D210_flt.narrowPeak
+rm -f narrow/HKE293-D210_peaks.narrowPeak.tmp
+# broad peak
+awk -v fc=$fc '$7 >= fc && $9 >=4' broad/HKE293-D210_peaks.broadPeak > broad/HKE293-D210_peaks.broadPeak.tmp
+bedtools subtract -A -a broad/HKE293-D210_peaks.broadPeak.tmp -b broad/HKE293-WKKD_peaks.broadPeak > broad/HKE293-D210_flt.broadPeak
+rm -f broad/HKE293-D210_peaks.broadPeak.tmp
+```
+
+之后可以用过滤后的D210N的narrowPeak和broadPeak的peak长度进行描述性统计分析，然后用箱线图展示其大小分布。
+
+```r
+library(data.table)
+library(ggplot2)
+
+narrowPeak <- fread(file="HKE293-D210_flt.narrowPeak",
+                   sep="\t", header = F)
+broadPeak <- fread(file="HKE293-D210_flt.broadPeak",
+                    sep="\t", header = F)
+peak_size <- log10(c(narrowPeak$V3 - narrowPeak$V2, broadPeak$V3 - broadPeak$V2 ))
+
+peak_from <- factor(rep(c('Narrow','Broad'), times=c(nrow(narrowPeak),nrow(broadPeak)) ),
+                    levels=c("Narrow","Broad"))
+
+peak_df <- data.frame(size=peak_size, from=peak_from)
+
+my_clear_theme = theme_bw() + 
+  theme(panel.grid.major = element_line(colour="NA"),
+        panel.grid.minor = element_line(colour="NA"),
+        panel.background = element_rect(fill="NA"),
+        panel.border = element_rect(colour="black", fill=NA),
+        legend.background = element_blank())
+
+ggplot(peak_df,aes(x=from,y=size,col=from)) + 
+  geom_boxplot(notch = T,outlier.size = .5) +
+  scale_y_continuous(breaks=c(log10(100),log10(300),log10(400),log10(450),log10(500),log10(1000),log10(2000)),
+                     labels = c(100,300,400,450,500,1000,2000)) +
+  coord_cartesian(ylim=c(2,3.5)) + labs(col="Peak Size") +
+  my_clear_theme + xlab("") + ylab("Peak Size (bp)")
+ggsave("Fig2A_boxplot.pdf", width=4,height=6,units = "in")
+```
+
+![Fig2A](http://oex750gzt.bkt.clouddn.com/18-9-19/37564618.jpg)
+
+原文说自己的narrow peak 长度的中位数是199bp, broad peak的长度中位数是318 bp，和电镜观察的150–500 bp一致。然而我过滤后的peak的中位数，除了narrow peak的中位数是380 bp勉强在150-500之间，broad peak的中位数已经快突破天际了。
+
+> 我觉得这或许和MACS2的版本有点关系，也可能是作者其实是分别用实验组和对照组找peak，然后进行把peak进行合并？也有可能是作者把BAM转换成了BED然后分析。这就是留给大家去验证，但是narrow peak的中位数和电镜结果一致就证明了这个方法是比较成功啦
+
+还可以对Broad peak 和Narrow peak进行比较，看看有多少共同peak和特异性peak。
+
+```bash
+#!/bin/bash
+#!/bin/bash
+
+peak1=${1?first peak}
+peak2=${2?second peak}
+outdir=${3?output dir}
+
+mkdir -p ${outdir}
+
+bedtools intersect -a $peak1 -b $peak2 > ${outdir}/$(basename ${peak1%%.*}).common.peak
+common=$(wc -l ${outdir}/$(basename ${peak1%%.*}).common.peak)
+echo "$common"
+
+bedtools subtract -A -a $peak1 -b $peak2 > ${outdir}/$(basename ${peak1%%.*}).only.peak
+left=$(wc -l ${outdir}/$(basename ${peak1%%.*}).only.peak)
+
+echo "$left"
+
+bedtools subtract -A -b $peak1 -a $peak2 > ${outdir}/$(basename ${peak2%%.*}).only.peak
+right=$(wc -l ${outdir}/$(basename ${peak2%%.*}).only.peak)
+
+echo "$right"
+```
+
+运行:`bash scripts/09.peak_compare.sh analysis/5-peak-calling/narrow/HKE293-D210_flt.narrowPeak analysis/5-peak-calling/broad/HKE293-D210_flt.broadPeak analysis/5-peak-calling/peak_compare > results/narrow_vs_broad.txt`
+
+然后得到的数值就可以丢到R语言画图了，这个结果和Figure S2A一致。
+
+```r
+library(VennDiagram)
+grid.newpage()
+venn.plot <- VennDiagram::draw.pairwise.venn(area1=6401 + 7165,
+                                area2=286 + 7165,
+                                cross.area = 7165,
+                                category = c("Narrow specific","Broad specific"),
+                                scaled = F,
+                                fill=c("#c7d0e7","#f4babf"),
+                                lty='blank',
+                                cat.pos = c(180,0),#360度划分
+                                rotation.degree = 90 #整体旋转90
+                                )
+grid.draw(venn.plot)
+
+```
+
+![venn plot](http://oex750gzt.bkt.clouddn.com/18-9-20/29733091.jpg)
