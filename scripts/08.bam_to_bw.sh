@@ -31,6 +31,7 @@ exec 0< $samples
 cd ${BW_DIR}
 while read sample
 do
+    ls
     bamCoverage -b ${sample}.tmp.bam -o ${sample}_fwd.bw -of bigwig  \
       --filterRNAstrand forward --binSize ${bs} --normalizeUsing CPM --effectiveGenomeSize 2864785220 \
       --extendReads 150 -p ${threads} 2> ../log/${sample}_fwd.log
