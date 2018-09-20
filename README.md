@@ -600,35 +600,39 @@ plotTracks(trackList = tracklist,
 
 #### Peak Calling
 
-关于MACS2的使用方法， 我写了[如何使用MACS进行peak calling](https://www.jianshu.com/p/6a975f0ea65a)详细地介绍了它的参数。按照默认参数分别找narrow peak 和 broad peak
+关于MACS2的使用方法， 我写了[如何使用MACS进行peak calling](https://www.jianshu.com/p/6a975f0ea65a)详细地介绍了它的参数，在用MACS2之前尽量去阅读下。
+
+**尽管** 文章说他按照默认参数分别找narrow peak 和 broad peak, 即"We used MACS2 with default settings to call narrow (or broad when necessary) R-loop peaks"，**但是** MACS2的默认参数一开始会根据reads在正反链的分布建立双峰模型，确定偏移模型(shifting model)，也就是它会认为示例CHTF8和CIRH1A位于正反链的信号视作一个IP结果的信号，因此用默认参数绝对有问题，所以 **必须**要增加`--nomodel`取消建模，且增加`--shift 0 --extsize 150`按照实验的条带长度对片段进行延长。
 
 ```bash
 cd analysis
 # HKE293 D210N
-macs2 callpeak -g hs --keep-dup all -f BAM -t 2-read-align/HKE293-D210N-V5ChIP-Rep*.flt.bam -c 2-read-align/HKE293-D210N-Input-Rep*.flt.bam --outdir 5-peak-calling/narrow -n HKE293-D210 2> log/HKE293-D210.macs2.narrow.log &
-macs2 callpeak -g hs --keep-dup all --broad -f BAM -t 2-read-align/HKE293-D210N-V5ChIP-Rep*.flt.bam -c 2-read-align/HKE293-D210N-Input-Rep*.flt.bam --outdir 5-peak-calling/broad -n HKE293-D210 2> log/HKE293-D210.macs2.broad.log &
+macs2 callpeak --nomodel --shift 0 --extsize 150 -g hs --keep-dup all -f BAM -t 2-read-align/HKE293-D210N-V5ChIP-Rep*.flt.bam -c 2-read-align/HKE293-D210N-Input-Rep*.flt.bam --outdir 5-peak-calling/narrow -n HKE293-D210 2> log/HKE293-D210.macs2.narrow.log &
+macs2 callpeak --nomodel --shift 0 --extsize 150 -g hs --keep-dup all --broad -f BAM -t 2-read-align/HKE293-D210N-V5ChIP-Rep*.flt.bam -c 2-read-align/HKE293-D210N-Input-Rep*.flt.bam --outdir 5-peak-calling/broad -n HKE293-D210 2> log/HKE293-D210.macs2.broad.log &
 # HEK293 WKKD
-macs2 callpeak -g hs --keep-dup all -f BAM -t 2-read-align/HKE293-WKKD-V5ChIP.flt.bam -c 2-read-align/HKE293-WKKD-Input.flt.bam --outdir 5-peak-calling/narrow/ -n HKE293-WKKD 2> log/HKE293-WKKD.macs2.narrow.log &
-macs2 callpeak -g hs --keep-dup all --broad -f BAM -t 2-read-align/HKE293-WKKD-V5ChIP.flt.bam -c 2-read-align/HKE293-WKKD-Input.flt.bam --outdir 5-peak-calling/broad/ -n HKE293-WKKD 2> log/HKE293-WKKD.macs2.broad.log &
+macs2 callpeak --nomodel --shift 0 --extsize 150  -g hs --keep-dup all -f BAM -t 2-read-align/HKE293-WKKD-V5ChIP.flt.bam -c 2-read-align/HKE293-WKKD-Input.flt.bam --outdir 5-peak-calling/narrow/ -n HKE293-WKKD 2> log/HKE293-WKKD.macs2.narrow.log &
+macs2 callpeak --nomodel --shift 0 --extsize 150  -g hs --keep-dup all --broad -f BAM -t 2-read-align/HKE293-WKKD-V5ChIP.flt.bam -c 2-read-align/HKE293-WKKD-Input.flt.bam --outdir 5-peak-calling/broad/ -n HKE293-WKKD 2> log/HKE293-WKKD.macs2.broad.log &
 ```
+
+可以将建模和不建模的narrowPeak结果在IGV进行比较，你会发现之前的CHTF8和CIRH1A上的两个信号峰在默认参数下就被认为是成一个。
+
+![是否建模](http://oex750gzt.bkt.clouddn.com/18-9-20/15540254.jpg)
+
+
 
 文章中对找到peak进行了一次筛选，标准是大于5倍富集和q-value 小于或等于0.001（broad peak则是0.0001），最后文章写着在D210N有12,906peak，然后剔除WKKD里的peak，还有12,507个。
 
-我找到的HKE293-D210的原始narrowPeak数为15,026, 按照作者的标准筛选后只剩下6639，发现负对照的WKKD只有2个peak，从D210过滤后基础上又剔除了一个。对于HKE2930-D210的原始broadPeak数为39278，过滤之后只剩2358了。
+我找到的HKE293-D210的原始narrowPeak数为17,558, 按照作者的标准筛选后只剩下9,552，。对于HKE2930-D210的原始broadPeak数为42,912，过滤之后只剩2,998了。隐隐觉得peak有点太少了，于是我的标准是4倍变化。
 
-这似乎表明在我的分析流程下，原标准有点过于严格了，因此我这里使用3倍。
+> 负对照的WKKD无论是narrowPeak还是broadPeak都是0
 
 ```bash
 cd analysis/5-peak-calling/
-fc=3
+fc=4
 # narrow peak
-awk -v fc=$fc '$7 >= fc && $9 >=3' narrow/HKE293-D210_peaks.narrowPeak > narrow/HKE293-D210_peaks.narrowPeak.tmp
-bedtools subtract -A -a narrow/HKE293-D210_peaks.narrowPeak.tmp -b narrow/HKE293-WKKD_peaks.narrowPeak > narrow/HKE293-D210_flt.narrowPeak
-rm -f narrow/HKE293-D210_peaks.narrowPeak.tmp
+awk -v fc=$fc '$7 >= fc && $9 >=3' narrow/HKE293-D210_peaks.narrowPeak > HKE293-D210_flt.narrowPeak
 # broad peak
-awk -v fc=$fc '$7 >= fc && $9 >=4' broad/HKE293-D210_peaks.broadPeak > broad/HKE293-D210_peaks.broadPeak.tmp
-bedtools subtract -A -a broad/HKE293-D210_peaks.broadPeak.tmp -b broad/HKE293-WKKD_peaks.broadPeak > broad/HKE293-D210_flt.broadPeak
-rm -f broad/HKE293-D210_peaks.broadPeak.tmp
+awk -v fc=$fc '$7 >= fc && $9 >=4' broad/HKE293-D210_peaks.broadPeak > HKE293-D210_flt.broadPeak
 ```
 
 之后可以用过滤后的D210N的narrowPeak和broadPeak的peak长度进行描述性统计分析，然后用箱线图展示其大小分布。
@@ -664,16 +668,15 @@ ggplot(peak_df,aes(x=from,y=size,col=from)) +
 ggsave("Fig2A_boxplot.pdf", width=4,height=6,units = "in")
 ```
 
-![Fig2A](http://oex750gzt.bkt.clouddn.com/18-9-19/37564618.jpg)
+![boxplot of peak width](http://oex750gzt.bkt.clouddn.com/18-9-20/78262273.jpg)
 
-原文说自己的narrow peak 长度的中位数是199bp, broad peak的长度中位数是318 bp，和电镜观察的150–500 bp一致。然而我过滤后的peak的中位数，除了narrow peak的中位数是380 bp勉强在150-500之间，broad peak的中位数已经快突破天际了。
+原文说自己的narrow peak 长度的中位数是199bp, broad peak的长度中位数是318 bp，和电镜观察的150–500 bp一致。我过滤后的peak的中位数是208，broad peak的中位数是581。
 
-> 我觉得这或许和MACS2的版本有点关系，也可能是作者其实是分别用实验组和对照组找peak，然后进行把peak进行合并？也有可能是作者把BAM转换成了BED然后分析。这就是留给大家去验证，但是narrow peak的中位数和电镜结果一致就证明了这个方法是比较成功啦
+> 如果你无脑用MACS2的参数话，就会得到右边的图，peak的长度明显都偏大了。
 
 还可以对Broad peak 和Narrow peak进行比较，看看有多少共同peak和特异性peak。
 
 ```bash
-#!/bin/bash
 #!/bin/bash
 
 peak1=${1?first peak}
@@ -686,18 +689,18 @@ bedtools intersect -a $peak1 -b $peak2 > ${outdir}/$(basename ${peak1%%.*}).comm
 common=$(wc -l ${outdir}/$(basename ${peak1%%.*}).common.peak)
 echo "$common"
 
-bedtools subtract -A -a $peak1 -b $peak2 > ${outdir}/$(basename ${peak1%%.*}).only.peak
-left=$(wc -l ${outdir}/$(basename ${peak1%%.*}).only.peak)
+bedtools subtract -A -a $peak1 -b $peak2 > ${outdir}/$(basename ${peak1}).only.bed
+left=$(wc -l ${outdir}/$(basename ${peak1}).only.bed)
 
 echo "$left"
 
-bedtools subtract -A -b $peak1 -a $peak2 > ${outdir}/$(basename ${peak2%%.*}).only.peak
-right=$(wc -l ${outdir}/$(basename ${peak2%%.*}).only.peak)
+bedtools subtract -A -b $peak1 -a $peak2 > ${outdir}/$(basename ${peak2}).only.bed
+right=$(wc -l ${outdir}/$(basename ${peak2}).only.bed)
 
 echo "$right"
 ```
 
-运行:`bash scripts/09.peak_compare.sh analysis/5-peak-calling/narrow/HKE293-D210_flt.narrowPeak analysis/5-peak-calling/broad/HKE293-D210_flt.broadPeak analysis/5-peak-calling/peak_compare > results/narrow_vs_broad.txt`
+运行:`bash scripts/09.peak_comparison.sh analysis/5-peak-calling/HKE293-D210_flt.narrowPeak analysis/5-peak-calling/HKE293-D210_flt.broadPeak analysis/5-peak-calling/peak_compare > results/narrow_vs_broad.txt`
 
 然后得到的数值就可以丢到R语言画图了，这个结果和Figure S2A一致。
 
@@ -715,10 +718,9 @@ venn.plot <- VennDiagram::draw.pairwise.venn(area1=6401 + 7165,
                                 rotation.degree = 90 #整体旋转90
                                 )
 grid.draw(venn.plot)
-
 ```
 
-![venn plot](http://oex750gzt.bkt.clouddn.com/18-9-20/29733091.jpg)
+![venn plot](http://oex750gzt.bkt.clouddn.com/18-9-20/96418336.jpg)
 
 我们可以对这三类peak对应区间内的信号进行一下比较。统计信号强度的工具是`bigwigSummary`，来自于[ucscGenomeBrowser](https://github.com/ucscGenomeBrowser/kent)工具集。
 
@@ -793,4 +795,3 @@ p2
 ![signal comparison](http://oex750gzt.bkt.clouddn.com/18-9-20/36368977.jpg)
 
 **看图说话**： 无论是narrow peak 特异区间的信号，还是broad peak 特异区间的信号都显著性低于其共有区间的信号。
-
