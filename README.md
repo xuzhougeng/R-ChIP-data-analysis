@@ -1,3 +1,5 @@
+# 如何进行R-ChIP数据分析
+
 提高自己分析能力的一个好的方法就是重复别人文章里的分析策略，所以这里会尝试对第一篇介绍R-ChIP技术文章"R-ChIP Using Inactive RNase H Reveals Dynamic Coupling of R-loops with Transcriptional Pausing at Gene Promoters"里的所有分析进行重复，我重复所用代码会更新在我的GitHub上，地址为<https://github.com/xuzhougeng/R-ChIP-data-analysis>
 
 选择这篇文章进行重复的理由有三点:
